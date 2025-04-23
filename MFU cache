@@ -1,0 +1,151 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_LEN 100
+#define MAX_CACHE 100  // Số lượng key tối đa hỗ trợ tra cứu tuyến tính
+
+typedef struct Node {
+    int key;
+    char value[MAX_LEN];
+    int freq;
+    struct Node* prev;
+    struct Node* next;
+} Node;
+
+typedef struct {
+    int capacity;
+    int size;
+    Node* head;
+    Node* tail;
+    Node* index[MAX_CACHE];  // Danh sách lưu trỏ đến Node theo key
+} MFUCache;
+
+// Khởi tạo cache
+MFUCache* initCache(int capacity) {
+    MFUCache* cache = (MFUCache*)malloc(sizeof(MFUCache));
+    cache->capacity = capacity;
+    cache->size = 0;
+    cache->head = cache->tail = NULL;
+    for (int i = 0; i < MAX_CACHE; i++) {
+        cache->index[i] = NULL;
+    }
+    return cache;
+}
+
+// Di chuyển node lên đầu danh sách
+void moveToFront(MFUCache* cache, Node* node) {
+    if (node == cache->head) return;
+
+    // Gỡ node ra khỏi danh sách
+    if (node->prev) node->prev->next = node->next;
+    if (node->next) node->next->prev = node->prev;
+
+    if (node == cache->tail) cache->tail = node->prev;
+
+    // Chèn node lên đầu
+    node->prev = NULL;
+    node->next = cache->head;
+    if (cache->head) cache->head->prev = node;
+    cache->head = node;
+
+    if (!cache->tail) cache->tail = node;
+}
+
+// Xóa node có tần suất truy cập cao nhất
+void removeMostFrequent(MFUCache* cache) {
+    Node* cur = cache->tail;
+    Node* mfu = cur;
+
+    while (cur) {
+        if (cur->freq > mfu->freq) mfu = cur;
+        cur = cur->prev;
+    }
+
+    // Gỡ node ra khỏi danh sách
+    if (mfu->prev) mfu->prev->next = mfu->next;
+    if (mfu->next) mfu->next->prev = mfu->prev;
+    if (mfu == cache->head) cache->head = mfu->next;
+    if (mfu == cache->tail) cache->tail = mfu->prev;
+
+    cache->index[mfu->key] = NULL;
+    free(mfu);
+    cache->size--;
+}
+
+// Tìm kiếm và trả về node theo key
+Node* findNode(MFUCache* cache, int key) {
+    if (key < 0 || key >= MAX_CACHE) return NULL;
+    return cache->index[key];
+}
+
+// Truy xuất giá trị
+char* getCache(MFUCache* cache, int key) {
+    Node* node = findNode(cache, key);
+    if (!node) return NULL;
+
+    node->freq++;
+    moveToFront(cache, node);
+    return node->value;
+}
+
+// Thêm phần tử
+void putCache(MFUCache* cache, int key, const char* value) {
+    Node* node = findNode(cache, key);
+    if (node) {
+        strcpy(node->value, value);
+        node->freq++;
+        moveToFront(cache, node);
+        return;
+    }
+
+    if (cache->size == cache->capacity) {
+        removeMostFrequent(cache);
+    }
+
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->key = key;
+    strcpy(newNode->value, value);
+    newNode->freq = 1;
+    newNode->prev = NULL;
+    newNode->next = cache->head;
+
+    if (cache->head) cache->head->prev = newNode;
+    cache->head = newNode;
+    if (!cache->tail) cache->tail = newNode;
+
+    cache->index[key] = newNode;
+    cache->size++;
+}
+
+// In nội dung cache
+void printCache(MFUCache* cache) {
+    Node* cur = cache->head;
+    printf("Cache: ");
+    while (cur) {
+        printf("(%d,%s,freq=%d) ", cur->key, cur->value, cur->freq);
+        cur = cur->next;
+    }
+    printf("\n");
+}
+
+int main() {
+    MFUCache* cache = initCache(3);
+
+    putCache(cache, 1, "A");
+    putCache(cache, 2, "B");
+    putCache(cache, 3, "C");
+    printCache(cache);  // Cache: (3,C,1) (2,B,1) (1,A,1)
+
+    getCache(cache, 2); // Tăng freq của 2
+    printCache(cache);  // Cache: (2,B,2) (3,C,1) (1,A,1)
+
+    putCache(cache, 4, "D"); // Loại B vì freq cao nhất
+     printCache(cache);  // Cache: (4,D,1) (3,C,1) (1,A,1)
+
+    getCache(cache, 3);
+    putCache(cache, 5, "E");
+    printCache(cache);
+
+    return 0;
+}
